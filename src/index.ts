@@ -47,11 +47,11 @@ textarea:focus{border-color:var(--purple)}
 .bc-from{font-weight:700;font-size:.85rem}
 .bc-channel{padding:2px 8px;border-radius:4px;font-size:.62rem;font-family:'JetBrains Mono',monospace;border:1px solid;text-transform:uppercase}
 .ch-all{color:#7800FF;border-color:#7800FF;background:rgba(136,68,255,.08)}
-.ch-agents{color:#00E676;border-color:#00E676;background:rgba(0,230,118,.08)}
+.ch-agents{color:#22c55e;border-color:#22c55e;background:rgba(0,230,118,.08)}
 .ch-ops{color:#FF6B2B;border-color:#FF6B2B;background:rgba(255,107,53,.08)}
 .bc-ts{font-size:.65rem;color:var(--sub);font-family:'JetBrains Mono',monospace;margin-left:auto}
 .bc-body{font-size:.85rem;line-height:1.6;color:#ccc}
-.live-dot{width:6px;height:6px;border-radius:50%;background:#00E676;box-shadow:0 0 6px #00E676;animation:blink 2s infinite}
+.live-dot{width:6px;height:6px;border-radius:50%;background:#22c55e;box-shadow:0 0 6px #22c55e;animation:blink 2s infinite}
 @keyframes blink{0%,100%{opacity:1}50%{opacity:.3}}
 .live-row{display:flex;align-items:center;gap:8px;font-size:.68rem;font-family:'JetBrains Mono',monospace;color:var(--sub);margin-bottom:14px}
 </style></head><body>
