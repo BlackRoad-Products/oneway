@@ -16,7 +16,7 @@ function page(broadcasts: any[]): Response {
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
-:root{--bg:#030303;--card:#0a0a0a;--border:#111;--text:#f0f0f0;--sub:#444;--purple:#8844FF;--grad:linear-gradient(135deg,#8844FF,#CC00AA,#FF2255)}
+:root{--bg:#030303;--card:#0a0a0a;--border:#111;--text:#f0f0f0;--sub:#444;--purple:#7800FF;--grad:linear-gradient(135deg,#7800FF,#FF00D4,#FF2255)}
 html,body{min-height:100vh;background:var(--bg);color:var(--text);font-family:'Space Grotesk',sans-serif}
 .grad-bar{height:2px;background:var(--grad)}
 .wrap{max-width:760px;margin:0 auto;padding:32px 20px}
@@ -38,9 +38,9 @@ textarea:focus{border-color:var(--purple)}
 .bc-header{display:flex;align-items:center;gap:10px;margin-bottom:8px}
 .bc-from{font-weight:700;font-size:.85rem}
 .bc-channel{padding:2px 8px;border-radius:4px;font-size:.62rem;font-family:'JetBrains Mono',monospace;border:1px solid;text-transform:uppercase}
-.ch-all{color:#8844FF;border-color:#8844FF;background:rgba(136,68,255,.08)}
+.ch-all{color:#7800FF;border-color:#7800FF;background:rgba(136,68,255,.08)}
 .ch-agents{color:#00E676;border-color:#00E676;background:rgba(0,230,118,.08)}
-.ch-ops{color:#FF6B35;border-color:#FF6B35;background:rgba(255,107,53,.08)}
+.ch-ops{color:#FF6B2B;border-color:#FF6B2B;background:rgba(255,107,53,.08)}
 .bc-ts{font-size:.65rem;color:var(--sub);font-family:'JetBrains Mono',monospace;margin-left:auto}
 .bc-body{font-size:.85rem;line-height:1.6;color:#ccc}
 .live-dot{width:6px;height:6px;border-radius:50%;background:#00E676;box-shadow:0 0 6px #00E676;animation:blink 2s infinite}
