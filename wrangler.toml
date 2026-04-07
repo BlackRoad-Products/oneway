@@ -1,15 +1,18 @@
 name = "oneway-blackroad"
-main = "src/worker.js"
-compatibility_date = "2026-03-31"
-
-[ai]
-binding = "AI"
-
+main = "src/index.ts"
+compatibility_date = "2025-01-01"
+compatibility_flags = ["nodejs_compat"]
 [[routes]]
 pattern = "oneway.blackroad.io/*"
 zone_name = "blackroad.io"
-
+[vars]
+ENVIRONMENT = "production"
+SERVICE_NAME = "oneway"
+VERSION = "2.0.0"
+[[kv_namespaces]]
+binding = "STORE"
+id = "befa6bbba08a4664b72efae09abcae63"
 [[d1_databases]]
 binding = "DB"
-database_name = "oneway"
-database_id = "bd290703-378b-4147-b6a7-e265a991ec60"
+database_name = "blackroad-os-main"
+database_id = "e2c6dcd9-c21a-48ac-8807-7b3a6881c4f7"
