@@ -12,7 +12,15 @@ async function getBroadcasts(env: Env, limit=20): Promise<any[]> {
 
 function page(broadcasts: any[]): Response {
   const html=`<!DOCTYPE html><html lang="en"><head>
-<meta charset="UTF-8"><title>OneWay — BlackRoad Broadcast</title>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>OneWay — Broadcast Channel</title>
+<meta name="description" content="Sovereign signal routing and convoy notifications for BlackRoad OS.">
+<link rel="canonical" href="https://oneway.blackroad.io/">
+<meta property="og:title" content="OneWay — Broadcast Channel">
+<meta property="og:description" content="Sovereign signal routing and convoy notifications for BlackRoad OS.">
+<meta property="og:url" content="https://oneway.blackroad.io/">
+<meta property="og:type" content="website">
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"WebApplication","name":"OneWay","url":"https://oneway.blackroad.io/","description":"Sovereign signal routing and convoy notifications for BlackRoad OS.","applicationCategory":"CommunicationApplication","publisher":{"@type":"Organization","name":"BlackRoad OS, Inc.","url":"https://blackroad.io"}}</script>
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
