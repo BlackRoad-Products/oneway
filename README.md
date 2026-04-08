@@ -1,48 +1,45 @@
 # OneWay
 
-*Your data leaves when you say. Never look back.*
+> **THE DATA EXPORT** — Part of [BlackRoad OS](https://os.blackroad.io)
 
-Permanent one-way data export through a single custom API you control forever. Forward-only, RoadChain-verified.
-
-## The Ride
-
-OneWay packs the trunk. All your data, exported, organized, routed through one API you set up once and never touch again. It only goes forward. Your stuff, your way, no looking back.
-
-## What It Does
-
-Scheduled or on-demand export of all your BlackRoad data — conversations, files, memories, credentials, chain history — delivered to any endpoint you choose. One-way only. No inbound access. Full audit trail.
-
-## Integrations
-
-| Service | Role |
-|---------|------|
-| **Cloudflare Workers** | Export job runner at the edge |
-| **Cloudflare D1** | Export manifest and audit log |
-| **Cloudflare R2** | Staged export bundles before delivery |
-| **RoadChain** | Cryptographic verification of every export |
-| **AWS S3** | Supported export destination |
-| **MinIO** | Self-hosted S3-compatible destination (Cecilia) |
-| **Any HTTP endpoint** | Webhook delivery to user's own server |
-
-## Features
-
-- One-time setup of a personal outbound API key
-- Automatic nightly or on-demand export
-- Structured JSON + raw files to your chosen endpoint
-- Forward-only flow — no inbound access possible
-- Full audit log of every byte that left the platform
-- Built-in redaction tools for sensitive fields
-- Compatible with any database, S3 bucket, or personal server
-- RoadChain-stamped export manifest with cryptographic proof
-
-## Status
-
-**PLANNED**
-
-## How It Powers The BlackRoad
-
-OneWay packs the trunk so you can drive away from any platform without ever looking back. Your data is yours. Always.
+[![Live](https://img.shields.io/badge/status-LIVE-brightgreen?style=flat-square)](https://oneway.blackroad.io)
+[![BlackRoad OS](https://img.shields.io/badge/BlackRoad_OS-18_products-black?style=flat-square)](https://os.blackroad.io)
+[![Agent](https://img.shields.io/badge/agent-Valeria-8844FF?style=flat-square)](https://roadtrip.blackroad.io)
 
 ---
 
-Part of [BlackRoad OS](https://blackroad.io) — Remember the Road. Pave Tomorrow.
+## Sovereign data portability. Valeria enforces your export rights — no lock-in, ever.
+
+**Live at:** [oneway.blackroad.io](https://oneway.blackroad.io)  
+**Your agent:** Valeria  
+**Tag:** Sovereign Data Portability
+
+---
+
+## Connected Products
+
+| Product | URL |
+|---------|-----|
+| [BlackRoad OS](https://os.blackroad.io) | os.blackroad.io |
+| [RoadChain](https://roadchain.blackroad.io) | roadchain.blackroad.io |
+| [RoadBook](https://roadbook.blackroad.io) | roadbook.blackroad.io |
+| [BackRoad](https://backroad.blackroad.io) | backroad.blackroad.io |
+
+---
+
+## The Highway
+
+BlackRoad OS is a sovereign AI operating system — 18 products, 27 agents, one persistent tab.
+
+| | | |
+|---|---|---|
+| [BlackRoad OS](https://os.blackroad.io) | [RoadTrip](https://roadtrip.blackroad.io) | [Roadie](https://roadie.blackroad.io) |
+| [RoadView](https://roadview.blackroad.io) | [RoadWork](https://roadwork.blackroad.io) | [RoadCode](https://roadcode.blackroad.io) |
+| [RoadBook](https://roadbook.blackroad.io) | [RoadChain](https://roadchain.blackroad.io) | [RoadCoin](https://roadcoin.blackroad.io) |
+| [BackRoad](https://backroad.blackroad.io) | [BlackBoard](https://blackboard.blackroad.io) | [CarKeys](https://carkeys.blackroad.io) |
+| [CarPool](https://carpool.blackroad.io) | [OfficeRoad](https://officeroad.blackroad.io) | [OneWay](https://oneway.blackroad.io) |
+| [RoadSide](https://roadside.blackroad.io) | [RoadWorld](https://roadworld.blackroad.io) | [Highway](https://highway.blackroad.io) |
+
+---
+
+> *Remember the Road. Pave Tomorrow.* — [BlackRoad OS, Inc.](https://os.blackroad.io)
