@@ -26,7 +26,83 @@ export default {
     if (request.method === 'OPTIONS') return new Response(null, {status:204,headers:cors});
 
     if (p === '/' || p === '') return new Response(HTML, {headers:{'Content-Type':'text/html;charset=utf-8','Content-Security-Policy':"frame-ancestors 'self' https://blackroad.io https://*.blackroad.io",...cors}});
-    if (p === '/health') return json({ok:true,service:'oneway',version:'4.0.0'},cors);
+    // Analytics tracking
+    if (p === '/api/track' && request.method === 'POST') {
+      try { const body = await request.json(); const cf = request.cf || {};
+        await env.DB.prepare("CREATE TABLE IF NOT EXISTS analytics_events (id INTEGER PRIMARY KEY AUTOINCREMENT, type TEXT DEFAULT 'pageview', path TEXT, referrer TEXT, country TEXT, city TEXT, device TEXT, screen TEXT, scroll_depth INTEGER DEFAULT 0, engagement_ms INTEGER DEFAULT 0, created_at TEXT DEFAULT (datetime('now')))").run();
+        await env.DB.prepare('INSERT INTO analytics_events (type, path, referrer, country, city, device, screen, scroll_depth, engagement_ms) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)').bind(body.type||'pageview', body.path||'/', body.referrer||'', cf.country||'', cf.city||'', body.device||'', body.screen||'', body.scroll||0, body.time||0).run();
+      } catch(e) {}
+      return new Response(JSON.stringify({ok:true}), {headers:{'Content-Type':'application/json'}});
+    }
+
+    // ── Sovereign Analytics ──
+    if (p === '/api/analytics' && request.method === 'POST') {
+      try {
+        const body = await request.json();
+        const cf = request.cf || {};
+        const ip = request.headers.get('CF-Connecting-IP') || '';
+        const ipHash = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(ip + '2026'));
+        const visitor = btoa(String.fromCharCode(...new Uint8Array(ipHash))).slice(0,12);
+        await env.DB.prepare(`CREATE TABLE IF NOT EXISTS br_analytics (id INTEGER PRIMARY KEY AUTOINCREMENT, path TEXT, referrer TEXT, visitor TEXT, country TEXT, city TEXT, screen TEXT, ts TEXT DEFAULT (datetime('now')))`).run();
+        await env.DB.prepare('INSERT INTO br_analytics (path, referrer, visitor, country, city, screen) VALUES (?,?,?,?,?,?)').bind(body.path||'/', body.ref||'', visitor, cf.country||'', cf.city||'', (body.w||0)+'x'+(body.h||0)).run();
+      } catch(e){}
+      return new Response('ok', {headers:{'Access-Control-Allow-Origin':'*'}});
+    }
+    if (p === '/api/analytics/stats') {
+      try {
+        await env.DB.prepare(`CREATE TABLE IF NOT EXISTS br_analytics (id INTEGER PRIMARY KEY AUTOINCREMENT, path TEXT, referrer TEXT, visitor TEXT, country TEXT, city TEXT, screen TEXT, ts TEXT DEFAULT (datetime('now')))`).run();
+        const total = await env.DB.prepare('SELECT COUNT(*) as c FROM br_analytics').first();
+        const unique = await env.DB.prepare('SELECT COUNT(DISTINCT visitor) as c FROM br_analytics').first();
+        const today = await env.DB.prepare("SELECT COUNT(*) as c FROM br_analytics WHERE ts > datetime('now','-1 day')").first();
+        const pages = await env.DB.prepare('SELECT path, COUNT(*) as views FROM br_analytics GROUP BY path ORDER BY views DESC LIMIT 10').all();
+        const countries = await env.DB.prepare('SELECT country, COUNT(*) as c FROM br_analytics WHERE country != "" GROUP BY country ORDER BY c DESC LIMIT 10').all();
+        return new Response(JSON.stringify({total_views:total?.c||0,unique_visitors:unique?.c||0,today:today?.c||0,top_pages:pages?.results||[],top_countries:countries?.results||[]}),{headers:{'Access-Control-Allow-Origin':'*','Content-Type':'application/json'}});
+      } catch(e) { return new Response(JSON.stringify({error:'analytics unavailable'}),{status:500,headers:{'Content-Type':'application/json'}}); }
+    }
+    if (p === '/health' || p === '/api/health') return json({ok:true,service:'oneway',version:'4.0.0'},cors);
+
+    // ─── Messaging Feature Pages ───
+    const OW_FEATURES = [
+      { slug: 'direct-messages', name: 'Direct Messages', category: 'Messaging', description: 'Send private, one-on-one messages to any user on the platform. Conversations stay between you and the recipient with full encryption.', howItWorks: 'Start a direct message by selecting any user from your contacts or searching by name. Messages are delivered instantly and stored securely. You can share text, files, images, and links. All direct messages are end-to-end encrypted by default, meaning only you and the recipient can read them.', privacyNote: 'Direct messages are end-to-end encrypted. OneWay never reads or analyzes private message content.', related: ['group-chats', 'message-encryption', 'read-receipts'] },
+      { slug: 'group-chats', name: 'Group Chats', category: 'Messaging', description: 'Create group conversations with up to 500 members. Perfect for teams, friend groups, and project collaboration.', howItWorks: 'Create a group by selecting multiple contacts and giving the group a name. Any member can add new participants or leave at any time. Group admins can manage permissions, pin important messages, and set group-wide notification preferences. Shared files are accessible to all members in the group media gallery.', privacyNote: 'Group messages are encrypted in transit. Group admins can configure message retention policies.', related: ['channels', 'direct-messages', 'threads'] },
+      { slug: 'channels', name: 'Channels', category: 'Organization', description: 'Topic-based public or private channels for organized team communication. Keep conversations focused and searchable.', howItWorks: 'Channels are persistent conversation spaces organized by topic, project, or team. Public channels are discoverable by anyone in your workspace. Private channels require an invitation. Each channel has its own file repository, pinned messages, and member list. Use channel descriptions to set expectations for what belongs there.', privacyNote: 'Channel visibility is controlled by the creator. Private channels are only accessible to invited members.', related: ['threads', 'pinned-messages', 'message-search'] },
+      { slug: 'threads', name: 'Threads', category: 'Organization', description: 'Reply to specific messages in a threaded conversation. Keep discussions organized without cluttering the main channel.', howItWorks: 'Click any message to start a thread. Replies appear in a side panel, keeping the main conversation clean. Thread participants get notifications for new replies. You can follow threads you care about and mute ones you do not. Threads work in both channels and group chats, making it easy to have focused discussions on specific topics.', privacyNote: 'Thread visibility follows the parent message permissions. No additional data is collected.', related: ['channels', 'reactions', 'notifications'] },
+      { slug: 'reactions', name: 'Reactions', category: 'Messaging', description: 'React to any message with emojis. Quick acknowledgments without sending a full reply.', howItWorks: 'Hover over any message and click the reaction icon to add an emoji. You can use standard emojis or custom ones uploaded by your workspace admin. Multiple users can add the same reaction, showing a count. Reactions are a lightweight way to acknowledge messages, vote on ideas, or express sentiment without creating notification noise.', privacyNote: 'Reactions are visible to all members who can see the original message.', related: ['direct-messages', 'threads', 'notifications'] },
+      { slug: 'file-sharing', name: 'File Sharing', category: 'Messaging', description: 'Share files up to 2GB directly in any conversation. Drag and drop images, documents, videos, and more.', howItWorks: 'Drag files into any conversation or click the attachment icon to browse. OneWay supports all file types including documents, images, videos, and archives. Files are stored securely and can be previewed inline for common formats. Each workspace has a searchable file library where you can find all shared files across conversations.', privacyNote: 'Files are encrypted at rest and in transit. You can set expiration dates on shared files.', related: ['direct-messages', 'group-chats', 'data-export'] },
+      { slug: 'voice-messages', name: 'Voice Messages', category: 'Messaging', description: 'Record and send voice messages when typing is not convenient. Perfect for quick updates on the go.', howItWorks: 'Hold the microphone button to record a voice message up to 5 minutes long. The recording is automatically compressed and uploaded. Recipients can play voice messages at 1x, 1.5x, or 2x speed. Voice messages include automatic transcription so they are searchable and accessible. You can preview your recording before sending.', privacyNote: 'Voice messages are encrypted like all other content. Transcriptions are generated on-device when possible.', related: ['direct-messages', 'file-sharing', 'message-search'] },
+      { slug: 'read-receipts', name: 'Read Receipts', category: 'Messaging', description: 'Know when your messages have been delivered and read. Optional per-conversation toggle for privacy.', howItWorks: 'When enabled, you will see delivery and read indicators on your sent messages. A single checkmark means delivered, double checkmarks mean read. You can disable read receipts per conversation or globally in your privacy settings. When you disable them, you also will not see read status on messages from others.', privacyNote: 'Read receipts are fully optional. Disabling them is a two-way privacy measure.', related: ['direct-messages', 'notifications', 'privacy-settings'] },
+      { slug: 'message-search', name: 'Message Search', category: 'Power Features', description: 'Full-text search across all your conversations, channels, and shared files. Find anything instantly.', howItWorks: 'Use the search bar to find messages, files, and links across your entire workspace. Filter by date range, sender, channel, or file type. Search results show context around the match so you can quickly find what you need. Advanced operators let you combine filters for precise results. Search indexes are updated in real-time.', privacyNote: 'Search only returns results from conversations you have access to. Search queries are not logged.', related: ['channels', 'pinned-messages', 'file-sharing'] },
+      { slug: 'pinned-messages', name: 'Pinned Messages', category: 'Organization', description: 'Pin important messages to the top of any conversation. Never lose track of key decisions or resources.', howItWorks: 'Right-click any message and select Pin to keep it easily accessible. Pinned messages appear in a dedicated panel at the top of the conversation. Any member can pin messages in channels they belong to. Admins can restrict pinning permissions if needed. Use pins for meeting notes, decisions, important links, and reference material.', privacyNote: 'Pinned messages follow the same visibility rules as the conversation they belong to.', related: ['channels', 'message-search', 'threads'] },
+      { slug: 'notifications', name: 'Notifications', category: 'Organization', description: 'Granular notification controls per channel, group, and conversation. Stay informed without being overwhelmed.', howItWorks: 'Configure notification preferences at multiple levels: global, per-channel, and per-conversation. Choose between all messages, mentions only, or muted. Set quiet hours to pause notifications during off-hours. Desktop, mobile, and email notifications can be configured independently. Keyword notifications alert you when specific terms are mentioned anywhere.', privacyNote: 'Notification preferences are stored locally and synced encrypted. We do not track notification interactions.', related: ['channels', 'threads', 'scheduled-messages'] },
+      { slug: 'status-updates', name: 'Status Updates', category: 'Messaging', description: 'Set a custom status to let your team know your availability, location, or current focus.', howItWorks: 'Click your profile to set a status message and emoji. Choose from preset options like Available, Busy, In a Meeting, or create your own. Set an expiration time so your status automatically clears. Your status appears next to your name everywhere in the workspace. Integrate with your calendar to auto-update your status during meetings.', privacyNote: 'Status is visible to all workspace members. You can hide your online/offline presence in settings.', related: ['direct-messages', 'notifications', 'group-chats'] },
+      { slug: 'scheduled-messages', name: 'Scheduled Messages', category: 'Power Features', description: 'Write now, send later. Schedule messages for the perfect time across any time zone.', howItWorks: 'Compose your message normally, then click the clock icon next to send. Pick a date and time, or use smart suggestions like "Tomorrow at 9am" or "Monday morning." Scheduled messages work in all conversation types. You can edit or cancel scheduled messages before they send. A dedicated Scheduled tab shows all your pending messages.', privacyNote: 'Scheduled messages are stored encrypted until send time. Only you can see pending scheduled messages.', related: ['direct-messages', 'channels', 'notifications'] },
+      { slug: 'message-encryption', name: 'Message Encryption', category: 'Privacy', description: 'End-to-end encryption for all messages by default. Your conversations stay private, even from us.', howItWorks: 'OneWay uses the Signal Protocol for end-to-end encryption on all direct messages. Group messages and channels use transport-layer encryption with optional E2EE for sensitive channels. Encryption keys are generated and stored on your devices only. Key verification lets you confirm you are talking to the right person. If you lose your device, you can recover with your backup phrase.', privacyNote: 'OneWay cannot read your encrypted messages. We have zero access to your private conversations.', related: ['direct-messages', 'privacy-settings', 'data-export'] },
+      { slug: 'data-export', name: 'Data Export', category: 'Privacy', description: 'Export all your data anytime in standard formats. Your data is yours and it leaves when you say.', howItWorks: 'Go to Settings and select Data Export to download everything: messages, files, contacts, and settings. Choose JSON, CSV, or a complete archive format. Exports include all your conversations, shared media, and account data. You can schedule automatic exports on a weekly or monthly basis. Export requests are processed within minutes for most accounts.', privacyNote: 'Data export gives you a complete copy. You can also request permanent deletion of all server-side data.', related: ['message-encryption', 'privacy-settings', 'file-sharing'] },
+    ];
+
+    if (p.startsWith('/features/') && p !== '/features/') {
+      const slug = p.replace('/features/', '').replace(/\/$/, '');
+      const feat = OW_FEATURES.find(f => f.slug === slug);
+      if (!feat) return new Response('Not Found', {status:404});
+      const relatedHtml = feat.related.map(r => { const rf = OW_FEATURES.find(f => f.slug === r); return rf ? `<a href="/features/${r}" style="display:inline-block;padding:8px 16px;background:#1a1a2e;border:1px solid #333;border-radius:8px;color:#ccc;text-decoration:none;margin:4px">${rf.name}</a>` : ''; }).join('');
+      const pageHtml = `<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${feat.name} - Messaging Feature | OneWay by BlackRoad</title><meta name="description" content="${feat.description}"><link rel="canonical" href="https://oneway.blackroad.io/features/${feat.slug}"><meta property="og:title" content="${feat.name} | OneWay by BlackRoad"><meta property="og:description" content="${feat.description}"><meta property="og:url" content="https://oneway.blackroad.io/features/${feat.slug}"><meta property="og:type" content="article"><meta property="og:site_name" content="OneWay by BlackRoad"><script type="application/ld+json">${JSON.stringify({"@context":"https://schema.org","@type":"Article","headline":feat.name,"description":feat.description,"url":"https://oneway.blackroad.io/features/"+feat.slug,"publisher":{"@type":"Organization","name":"BlackRoad OS, Inc."},"articleSection":feat.category})}</script><style>*{margin:0;padding:0;box-sizing:border-box}body{background:#0a0a1a;color:#e0e0e0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;line-height:1.7}a{color:#7B93DB}.container{max-width:800px;margin:0 auto;padding:40px 20px}.badge{display:inline-block;padding:4px 12px;border-radius:20px;font-size:13px;font-weight:600;background:#1a1a2e;border:1px solid #333;margin-bottom:16px}.section{margin:32px 0}.section h2{font-size:20px;margin-bottom:12px;color:#fff}.privacy-note{background:#0d1a0d;border:1px solid #1a3a1a;border-radius:12px;padding:16px;margin:24px 0;font-size:14px;color:#8BC34A}.cta{display:inline-block;padding:14px 32px;background:linear-gradient(135deg,#FF1D6C,#F5A623);color:#fff;border-radius:12px;text-decoration:none;font-weight:600;margin-top:24px}.nav{padding:20px;border-bottom:1px solid #1a1a2e;display:flex;justify-content:space-between;align-items:center}.nav a{color:#ccc;text-decoration:none}</style></head><body><nav class="nav"><a href="/">OneWay</a><a href="/features">All Features</a></nav><div class="container"><span class="badge">${feat.category}</span><h1 style="font-size:36px;margin-bottom:16px">${feat.name}</h1><p style="font-size:18px;color:#aaa;margin-bottom:32px">${feat.description}</p><div class="section"><h2>How It Works</h2><p style="font-size:16px;line-height:1.8">${feat.howItWorks}</p></div><div class="privacy-note"><strong>Privacy:</strong> ${feat.privacyNote}</div><div class="section"><h2>Related Features</h2><div>${relatedHtml}</div></div><div style="text-align:center;margin-top:40px"><a href="/" class="cta">Try OneWay</a></div></div><footer style="text-align:center;padding:40px;color:#555;font-size:13px;border-top:1px solid #1a1a2e;margin-top:60px">&#169; 2025-2026 BlackRoad OS, Inc. All rights reserved.</footer><script>(function(){var d={path:location.pathname,ref:document.referrer,w:screen.width,h:screen.height,t:Date.now()};navigator.sendBeacon&&navigator.sendBeacon('/api/analytics',JSON.stringify(d))})()</script></body></html>`;
+      return new Response(pageHtml, {headers:{'Content-Type':'text/html;charset=utf-8'}});
+    }
+
+    if (p === '/features' || p === '/features/') {
+      const rows = OW_FEATURES.map(f=>`<tr><td style="padding:12px"><a href="/features/${f.slug}" style="color:#7B93DB;text-decoration:none;font-weight:600">${f.name}</a></td><td style="padding:12px;color:#aaa">${f.category}</td><td style="padding:12px;color:#888;font-size:14px">${f.description}</td></tr>`).join('');
+      const indexHtml = `<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Messaging Features - Private, Secure Communication | OneWay by BlackRoad</title><meta name="description" content="Explore 15+ messaging features built for privacy. Direct messages, channels, encryption, data export, and more. Your data leaves when you say."><link rel="canonical" href="https://oneway.blackroad.io/features"><meta property="og:title" content="Messaging Features | OneWay by BlackRoad"><meta property="og:description" content="Explore 15+ messaging features built for privacy."><meta property="og:url" content="https://oneway.blackroad.io/features"><meta property="og:type" content="website"><script type="application/ld+json">${JSON.stringify({"@context":"https://schema.org","@type":"CollectionPage","name":"OneWay Messaging Features","description":"Explore 15+ messaging features built for privacy","url":"https://oneway.blackroad.io/features","numberOfItems":OW_FEATURES.length,"provider":{"@type":"Organization","name":"BlackRoad OS, Inc."}})}</script><style>*{margin:0;padding:0;box-sizing:border-box}body{background:#0a0a1a;color:#e0e0e0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;line-height:1.6}a{color:#7B93DB}.container{max-width:1000px;margin:0 auto;padding:40px 20px}table{width:100%;border-collapse:collapse;margin-top:24px}th{text-align:left;padding:12px;border-bottom:2px solid #333;color:#fff;font-size:13px;text-transform:uppercase;letter-spacing:1px}td{border-bottom:1px solid #1a1a2e}.nav{padding:20px;border-bottom:1px solid #1a1a2e;display:flex;justify-content:space-between;align-items:center}.nav a{color:#ccc;text-decoration:none}.cta{display:inline-block;padding:14px 32px;background:linear-gradient(135deg,#FF1D6C,#F5A623);color:#fff;border-radius:12px;text-decoration:none;font-weight:600;margin-top:32px}</style></head><body><nav class="nav"><a href="/">OneWay</a><a href="/features">All Features</a></nav><div class="container"><h1 style="font-size:36px;margin-bottom:8px">Messaging Features</h1><p style="color:#aaa;font-size:18px;margin-bottom:24px">Everything you need for private, secure communication. ${OW_FEATURES.length} features built with privacy first.</p><table><thead><tr><th>Feature</th><th>Category</th><th>Description</th></tr></thead><tbody>${rows}</tbody></table><div style="text-align:center;margin-top:48px"><a href="/" class="cta">Try OneWay</a></div></div><footer style="text-align:center;padding:40px;color:#555;font-size:13px;border-top:1px solid #1a1a2e;margin-top:60px">&#169; 2025-2026 BlackRoad OS, Inc. All rights reserved.</footer></body></html>`;
+      return new Response(indexHtml, {headers:{'Content-Type':'text/html;charset=utf-8'}});
+    }
+
+    if (p === '/sitemap.xml') {
+      const featUrls = OW_FEATURES.map(f=>'  <url><loc>https://oneway.blackroad.io/features/'+f.slug+'</loc><changefreq>weekly</changefreq><priority>0.8</priority></url>').join('\n');
+      return new Response('<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n  <url><loc>https://oneway.blackroad.io/</loc><lastmod>'+new Date().toISOString().split('T')[0]+'</lastmod><changefreq>daily</changefreq><priority>1.0</priority></url>\n  <url><loc>https://oneway.blackroad.io/features</loc><changefreq>weekly</changefreq><priority>0.9</priority></url>\n'+featUrls+'\n</urlset>', {headers:{'Content-Type':'application/xml'}});
+    }
+
+    if (p === '/robots.txt') {
+      return new Response('User-agent: *\nAllow: /\nAllow: /features/\nSitemap: https://oneway.blackroad.io/sitemap.xml\n\nUser-agent: GPTBot\nDisallow: /\n\nUser-agent: ChatGPT-User\nDisallow: /\n\nUser-agent: CCBot\nDisallow: /', {headers:{'Content-Type':'text/plain'}});
+    }
 
     try {
       if (!dbReady) { await ensureOWTables(env.DB); dbReady = true; }
@@ -39,13 +115,17 @@ export default {
 
       if (p === '/api/exports' && request.method === 'POST') {
         const body = await request.json();
-        if (!body.name || !body.source) return json({error:'name and source required'},cors,400);
-        const sources = ['chat','social','search','roadtrip','memory','all'];
-        if (!sources.includes(body.source)) return json({error:'source must be: '+sources.join(', ')},cors,400);
+        // Support both old schema (name+source) and new schema (type+user_id)
+        const name = body.name || body.type || 'export';
+        const source = body.source || body.type || 'all';
+        const sources = ['chat','social','search','roadtrip','memory','all','full','product','agent-history','publications','wallet'];
+        if (!sources.includes(source)) return json({error:'source/type must be: '+sources.join(', ')},cors,400);
         const id = crypto.randomUUID().slice(0,8);
         await env.DB.prepare('INSERT INTO ow_exports (id,name,format,source,destination_url,filter) VALUES (?,?,?,?,?,?)')
-          .bind(id, body.name.slice(0,100), body.format||'json', body.source, body.destination_url||'', JSON.stringify(body.filter||{})).run();
-        return json({ok:true,id,name:body.name},cors,201);
+          .bind(id, name.slice(0,100), body.format||'json', source, body.destination_url||'', JSON.stringify(body.filter||{})).run();
+        // Stamp to RoadChain
+        try { await fetch('https://roadchain.blackroad.io/api/event',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({app:'oneway',type:'export_created',data:{id,source}})}); } catch{}
+        return json({ok:true,id,name,source,format:body.format||'json'},cors,201);
       }
 
       // ─── Quick export (POST version) ───
@@ -91,11 +171,11 @@ Write a 2-sentence plain-language summary of what was exported and what the user
       if (p === '/api/export/quick' && request.method === 'GET') {
         const source = url.searchParams.get('source') || 'all';
         const sourceAPIs = {
-          chat: 'https://chat.blackroad.io/api/stats',
-          social: 'https://social.blackroad.io/api/stats',
-          search: 'https://search.blackroad.io/stats',
+          chat: 'https://roadtrip.blackroad.io/api/stats',
+          social: 'https://backroad.blackroad.io/api/stats',
+          search: 'https://roadview.blackroad.io/stats',
           roadtrip: 'https://roadtrip.blackroad.io/api/agents',
-          memory: 'https://chat.blackroad.io/api/knowledge?agent=all',
+          memory: 'https://roadtrip.blackroad.io/api/knowledge?agent=all',
         };
         let data = {};
         if (source === 'all') {
@@ -404,10 +484,10 @@ Give a verification verdict in 2-3 sentences. State whether the export is trustw
       // ─── GET /api/manifest — Full manifest of all exportable data ───
       if (p === '/api/manifest' && request.method === 'GET') {
         const sourceManifest = {
-          chat: { name: 'Chat Messages', endpoint: 'https://chat.blackroad.io/api/stats', estimated_size_kb: 25, formats: ['json','csv'], contains: ['messages','rooms','timestamps','participants'] },
-          social: { name: 'Social Posts', endpoint: 'https://social.blackroad.io/api/stats', estimated_size_kb: 15, formats: ['json','csv'], contains: ['posts','reactions','shares','profiles'] },
-          search: { name: 'Search History', endpoint: 'https://search.blackroad.io/stats', estimated_size_kb: 40, formats: ['json','csv'], contains: ['queries','results','timestamps','click_data'] },
-          memory: { name: 'Memory & Knowledge', endpoint: 'https://chat.blackroad.io/api/knowledge', estimated_size_kb: 80, formats: ['json','csv','markdown'], contains: ['journal','codex','TILs','todos','solutions','patterns'] },
+          chat: { name: 'Chat Messages', endpoint: 'https://roadtrip.blackroad.io/api/stats', estimated_size_kb: 25, formats: ['json','csv'], contains: ['messages','rooms','timestamps','participants'] },
+          social: { name: 'Social Posts', endpoint: 'https://backroad.blackroad.io/api/stats', estimated_size_kb: 15, formats: ['json','csv'], contains: ['posts','reactions','shares','profiles'] },
+          search: { name: 'Search History', endpoint: 'https://roadview.blackroad.io/stats', estimated_size_kb: 40, formats: ['json','csv'], contains: ['queries','results','timestamps','click_data'] },
+          memory: { name: 'Memory & Knowledge', endpoint: 'https://roadtrip.blackroad.io/api/knowledge', estimated_size_kb: 80, formats: ['json','csv','markdown'], contains: ['journal','codex','TILs','todos','solutions','patterns'] },
           roadtrip: { name: 'Agent Conversations', endpoint: 'https://roadtrip.blackroad.io/api/agents', estimated_size_kb: 35, formats: ['json','csv'], contains: ['agents','messages','channels','debates'] },
         };
 
@@ -1589,8 +1669,8 @@ Write 2 sentences confirming the erasure process and any follow-up the data cont
         for (const src of sources) {
           const lid = crypto.randomUUID().slice(0,8);
           const originInfo = {
-            chat:'chat.blackroad.io', social:'social.blackroad.io', search:'search.blackroad.io',
-            memory:'chat.blackroad.io/knowledge', roadtrip:'roadtrip.blackroad.io', all:'multiple BlackRoad products'
+            chat:'roadtrip.blackroad.io', social:'backroad.blackroad.io', search:'roadview.blackroad.io',
+            memory:'roadtrip.blackroad.io/knowledge', roadtrip:'roadtrip.blackroad.io', all:'multiple BlackRoad products'
           };
           await env.DB.prepare('INSERT INTO ow_lineage (id,export_id,origin,origin_type,transformations,destination,destination_type,step_order,metadata) VALUES (?,?,?,?,?,?,?,?,?)')
             .bind(lid, body.export_id, originInfo[src]||src, 'blackroad_product', '[]', 'oneway_pipeline', 'intermediate', stepOrder, JSON.stringify({source:src})).run();
@@ -2118,7 +2198,7 @@ Give 2-3 specific improvement recommendations. Be practical.`;
           sources: {
             chat: {
               name: 'Chat Messages',
-              endpoint: 'https://chat.blackroad.io/api/stats',
+              endpoint: 'https://roadtrip.blackroad.io/api/stats',
               product: 'RoadChat',
               description: 'Real-time chat messages, rooms, and participant data from the sovereign BlackRoad chat system.',
               schema: {
@@ -2133,7 +2213,7 @@ Give 2-3 specific improvement recommendations. Be practical.`;
             },
             social: {
               name: 'Social Posts',
-              endpoint: 'https://social.blackroad.io/api/stats',
+              endpoint: 'https://backroad.blackroad.io/api/stats',
               product: 'RoadSocial',
               description: 'Social media posts, reactions, shares, and profile data.',
               schema: {
@@ -2148,7 +2228,7 @@ Give 2-3 specific improvement recommendations. Be practical.`;
             },
             search: {
               name: 'Search History',
-              endpoint: 'https://search.blackroad.io/stats',
+              endpoint: 'https://roadview.blackroad.io/stats',
               product: 'RoadSearch',
               description: 'Search queries, results, click data, and search analytics.',
               schema: {
@@ -2163,7 +2243,7 @@ Give 2-3 specific improvement recommendations. Be practical.`;
             },
             memory: {
               name: 'Memory & Knowledge',
-              endpoint: 'https://chat.blackroad.io/api/knowledge',
+              endpoint: 'https://roadtrip.blackroad.io/api/knowledge',
               product: 'BlackRoad Memory',
               description: 'Journal entries, codex solutions, TILs, todos, patterns, and agent knowledge base.',
               schema: {
@@ -2253,6 +2333,74 @@ Give 2-3 specific improvement recommendations. Be practical.`;
         }
 
         return json({query:q,results,total_matches:results.length},cors);
+      }
+
+      // --- Enhanced: Export jobs ---
+      if (p === '/api/exports' && request.method === 'POST') {
+        if (!env.DB) return json({error:'no db'},cors,500);
+        await env.DB.prepare("CREATE TABLE IF NOT EXISTS ow_exports (id TEXT PRIMARY KEY, user_id TEXT, type TEXT, scope TEXT, format TEXT DEFAULT 'json', status TEXT DEFAULT 'pending', chain_hash TEXT, manifest_hash TEXT, created_at TEXT DEFAULT (datetime('now')), completed_at TEXT)").run();
+        const body = await request.json();
+        const id = crypto.randomUUID().slice(0,12);
+        const types = ['full','product','memory','agent-history','publications','wallet'];
+        const type = types.includes(body.type) ? body.type : 'full';
+        await env.DB.prepare("INSERT INTO ow_exports (id,user_id,type,scope,format) VALUES (?,?,?,?,?)").bind(id,body.user_id||'anonymous',type,body.scope||'all',body.format||'json').run();
+        // Stamp to RoadChain
+        let chainHash = null;
+        try { const r = await fetch('https://roadchain.blackroad.io/api/event',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({app:'oneway',type:'export_created',data:{id,type}})}); const d = await r.json(); chainHash = d.stamp; } catch{}
+        if (chainHash) await env.DB.prepare("UPDATE ow_exports SET chain_hash = ?, status = 'completed', completed_at = datetime('now') WHERE id = ?").bind(chainHash,id).run();
+        return json({ok:true,id,type,chain_hash:chainHash,status:chainHash?'completed':'pending'},cors,201);
+      }
+      if (p === '/api/exports' && request.method === 'GET') {
+        if (!env.DB) return json({exports:[]},cors);
+        try { await env.DB.prepare("CREATE TABLE IF NOT EXISTS ow_exports (id TEXT PRIMARY KEY, user_id TEXT, type TEXT, scope TEXT, format TEXT DEFAULT 'json', status TEXT DEFAULT 'pending', chain_hash TEXT, manifest_hash TEXT, created_at TEXT DEFAULT (datetime('now')), completed_at TEXT)").run(); } catch{}
+        const rows = await env.DB.prepare('SELECT * FROM ow_exports ORDER BY created_at DESC LIMIT 50').all();
+        return json({exports:rows.results},cors);
+      }
+      const exportMatch = p.match(/^\/api\/exports\/([^/]+)$/);
+      if (exportMatch && request.method === 'GET') {
+        if (!env.DB) return json({error:'no db'},cors,500);
+        const exp = await env.DB.prepare('SELECT * FROM ow_exports WHERE id = ?').bind(exportMatch[1]).first();
+        if (!exp) return json({error:'not found'},cors,404);
+        return json({export:exp},cors);
+      }
+      const manifestMatch = p.match(/^\/api\/exports\/([^/]+)\/manifest$/);
+      if (manifestMatch && request.method === 'GET') {
+        if (!env.DB) return json({error:'no db'},cors,500);
+        const exp = await env.DB.prepare('SELECT * FROM ow_exports WHERE id = ?').bind(manifestMatch[1]).first();
+        if (!exp) return json({error:'not found'},cors,404);
+        const hashBuf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(JSON.stringify(exp)));
+        const mHash = Array.from(new Uint8Array(hashBuf)).map(b=>b.toString(16).padStart(2,'0')).join('');
+        return json({export_id:exp.id,manifest_hash:mHash,chain_hash:exp.chain_hash,type:exp.type,format:exp.format,created_at:exp.created_at,completed_at:exp.completed_at},cors);
+      }
+      const proofMatch = p.match(/^\/api\/exports\/([^/]+)\/proof$/);
+      if (proofMatch && request.method === 'GET') {
+        if (!env.DB) return json({error:'no db'},cors,500);
+        const exp = await env.DB.prepare('SELECT * FROM ow_exports WHERE id = ?').bind(proofMatch[1]).first();
+        if (!exp) return json({error:'not found'},cors,404);
+        const hashBuf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(JSON.stringify(exp)));
+        const mHash = Array.from(new Uint8Array(hashBuf)).map(b=>b.toString(16).padStart(2,'0')).join('');
+        return json({proof:{export_id:exp.id,type:exp.type,manifest_hash:mHash,chain_hash:exp.chain_hash,timestamp:exp.created_at,verified:!!exp.chain_hash,format:exp.format}},cors);
+      }
+      // --- Enhanced: Portability ---
+      if (p === '/api/portability') {
+        return json({exportable:[
+          {type:'full',description:'Complete data export — all products, memory, agent history',formats:['json','zip']},
+          {type:'product',description:'Single product data',formats:['json','csv']},
+          {type:'memory',description:'Shared memory and knowledge base',formats:['json']},
+          {type:'agent-history',description:'Agent conversations and decisions',formats:['json']},
+          {type:'publications',description:'RoadBook publications and versions',formats:['json','html']},
+          {type:'wallet',description:'RoadCoin wallet, transactions, and stakes',formats:['json','csv']},
+        ]},cors);
+      }
+      // --- Enhanced: Verify ---
+      if (p === '/api/verify' && request.method === 'POST') {
+        const body = await request.json();
+        if (!body.manifest_hash) return json({error:'manifest_hash required'},cors,400);
+        let verified = false;
+        if (body.chain_hash) {
+          try { const r = await fetch('https://roadchain.blackroad.io/api/provenance/'+body.chain_hash); const d = await r.json(); verified = d.found === true; } catch{}
+        }
+        return json({manifest_hash:body.manifest_hash,chain_hash:body.chain_hash||null,verified,checked_at:new Date().toISOString()},cors);
       }
 
       if (p.startsWith('/api/')) return json({error:'not found'},cors,404);
@@ -2354,11 +2502,11 @@ async function ensureOWTables(db) {
 
 async function pullSourceData(source) {
   const sourceAPIs = {
-    chat: 'https://chat.blackroad.io/api/stats',
-    social: 'https://social.blackroad.io/api/stats',
-    search: 'https://search.blackroad.io/stats',
+    chat: 'https://roadtrip.blackroad.io/api/stats',
+    social: 'https://backroad.blackroad.io/api/stats',
+    search: 'https://roadview.blackroad.io/stats',
     roadtrip: 'https://roadtrip.blackroad.io/api/agents',
-    memory: 'https://chat.blackroad.io/api/knowledge?agent=all',
+    memory: 'https://roadtrip.blackroad.io/api/knowledge?agent=all',
   };
 
   if (source === 'all') {
@@ -3219,4 +3367,6 @@ fetch('/api/stats').then(r=>r.json()).then(d=>{
   document.getElementById('s-pipes').textContent=d.pipelines||0;
   document.getElementById('s-gdpr').textContent=d.pending_gdpr||0;
 }).catch(()=>{});
-</script></body></html>`;
+window.addEventListener('message',function(e){if(e.data</script></script>e.data.type==='blackroad-os:context'){window._osUser=e.data.user;window._osToken=e.data.token;}});if(window.parent!==window)window.parent.postMessage({type:'blackroad-os:request-context'},'*');
+</script><script>!function(){var b=document.createElement("div");b.style.cssText="position:fixed;top:0;left:0;right:0;z-index:99999;background:#0a0a0a;border-bottom:1px solid #1a1a1a;padding:6px 16px;display:flex;align-items:center;justify-content:space-between;font-family:sans-serif";b.innerHTML="<span style=\"font-size:11px;color:#737373\">Part of <a href=\"https://os.blackroad.io\" style=\"color:#f5f5f5;font-weight:600;text-decoration:none\">BlackRoad OS<\/a> \u2014 27 AI agents, 17 products<\/span><a href=\"https://os.blackroad.io\" style=\"font-size:10px;font-weight:600;padding:4px 12px;background:#f5f5f5;color:#000;border-radius:4px;text-decoration:none\">Try Free<\/a>";b.id="br-bar";if(!document.getElementById("br-bar")){document.body.prepend(b);document.body.style.paddingTop=(parseInt(getComputedStyle(document.body).paddingTop)||0)+32+"px"}if(!document.querySelector("[data-cta]")){var f=document.createElement("div");f.dataset.cta="1";f.style.cssText="border-top:1px solid #1a1a1a;padding:24px 16px;text-align:center;background:#0a0a0a;margin-top:32px";f.innerHTML="<div style=\"font-size:14px;font-weight:700;color:#f5f5f5;margin-bottom:6px\">BlackRoad OS<\/div><div style=\"font-size:11px;color:#737373;margin-bottom:12px\">17 products. 27 agents. Free to try.<\/div><a href=\"https://os.blackroad.io\" style=\"display:inline-block;padding:8px 24px;background:#f5f5f5;color:#000;border-radius:6px;font-size:12px;font-weight:600;text-decoration:none\">Open BlackRoad OS<\/a>";document.body.appendChild(f)}}();</script>
+</body></html>`;
